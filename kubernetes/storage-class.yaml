@@ -1,0 +1,24 @@
+# StorageClass backed by GCP Persistent Disk SSD (pd-ssd).
+# Used by DataRobot's stateful components (Postgres, Mongo, etc.) where
+# fast random-IO is required.
+#
+# Notes:
+#   * provisioner pd.csi.storage.gke.io is the GKE-managed PD CSI driver
+#     (enabled via gce_persistent_disk_csi_driver_config in Terraform).
+#   * volumeBindingMode: WaitForFirstConsumer keeps the disk in the same
+#     zone as the consuming Pod -- important for a regional cluster.
+#   * reclaimPolicy: Retain so PoC data is not silently destroyed when a
+#     PVC is deleted. Switch to Delete once you are confident.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: datarobot-ssd
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-ssd
+  # csi.storage.k8s.io/fstype: ext4
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer

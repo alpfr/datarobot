@@ -1,0 +1,158 @@
+# =============================================================================
+# DataRobot Helm chart -- PoC values overrides (GKE / GCP)
+# =============================================================================
+# This file is a TEMPLATE. The exact key paths below mirror the structure
+# documented for the DataRobot enterprise Helm chart at the time of writing,
+# but you MUST cross-check every key against the version of the chart your
+# DataRobot SA gives you (`helm show values <repo>/datarobot --version <ver>`)
+# and adjust as needed before installing.
+#
+# Replace every "<...>" placeholder before running `helm install`.
+# =============================================================================
+
+global:
+  # ---------------------------------------------------------------------------
+  # Licensing
+  # ---------------------------------------------------------------------------
+  # Either paste the license string inline (PoC) or, preferred, create a
+  # Kubernetes Secret out-of-band and reference it via existingSecret.
+  license:
+    # key: "<DATAROBOT_LICENSE_KEY>"
+    existingSecret: "datarobot-license"   # kubectl create secret generic datarobot-license --from-file=license=./license.key
+    secretKey: "license"
+
+  # ---------------------------------------------------------------------------
+  # Image registry
+  # ---------------------------------------------------------------------------
+  # DataRobot ships images via a private registry. Your DataRobot SA provides
+  # the registry hostname + a pull secret manifest -- apply that manifest then
+  # reference its name here.
+  imageRegistry: "<datarobot-private-registry.example.com>"
+  imagePullSecrets:
+    - name: "datarobot-regcred"
+
+  # ---------------------------------------------------------------------------
+  # Cluster / scheduling
+  # ---------------------------------------------------------------------------
+  # Send heavy modeling workloads to the tainted "modeling-workers" pool
+  # provisioned by Terraform. The system pool runs everything else.
+  modelingNodeSelector:
+    pool: modeling
+  modelingTolerations:
+    - key: workload
+      operator: Equal
+      value: datarobot
+      effect: NoSchedule
+
+  # ---------------------------------------------------------------------------
+  # Workload Identity -- pods impersonate the GCP SA created by Terraform.
+  # The Terraform output `datarobot_workload_service_account` is the email.
+  # The KSA name MUST match the binding in main.tf
+  # (datarobot/datarobot-app); change both together if you rename it.
+  # ---------------------------------------------------------------------------
+  serviceAccount:
+    create: true
+    name: "datarobot-app"
+    annotations:
+      iam.gke.io/gcp-service-account: "<datarobot-poc-app@<PROJECT_ID>.iam.gserviceaccount.com>"
+
+# =============================================================================
+# Persistence -- use the pd-ssd StorageClass from storage-class.yaml for any
+# component that does meaningful disk IO (Postgres, Mongo, Redis AOF, etc.).
+# =============================================================================
+persistence:
+  storageClass: "datarobot-ssd"
+
+postgresql:
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "datarobot-ssd"
+      size: 50Gi
+
+mongodb:
+  persistence:
+    enabled: true
+    storageClass: "datarobot-ssd"
+    size: 50Gi
+
+redis:
+  master:
+    persistence:
+      enabled: true
+      storageClass: "datarobot-ssd"
+      size: 10Gi
+
+elasticsearch:
+  volumeClaimTemplate:
+    storageClassName: "datarobot-ssd"
+    resources:
+      requests:
+        storage: 50Gi
+
+# =============================================================================
+# Object storage -- DataRobot blob storage on GCS.
+# Bucket names come from `terraform output blob_buckets`.
+# =============================================================================
+blobStorage:
+  provider: "gcs"
+  gcs:
+    # Authentication is via Workload Identity -- no JSON key required.
+    # The KSA above must be annotated with the GCP SA email.
+    fileStorageBucket:    "<PROJECT_ID>-datarobot-poc-file-storage>"
+    modelArtifactsBucket: "<PROJECT_ID>-datarobot-poc-model-artifacts>"
+    predictionDataBucket: "<PROJECT_ID>-datarobot-poc-prediction-data>"
+
+# =============================================================================
+# Ingress / TLS
+# =============================================================================
+# Recommended: use cert-manager + a ClusterIssuer (Let's Encrypt or your CA)
+# and let the chart's Ingress request the cert. Alternatively, create a TLS
+# Secret manually and reference it via `existingSecret`.
+ingress:
+  enabled: true
+  className: "gce"                # GCE ingress controller (default on GKE)
+  hostname: "<datarobot.example.com>"
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  tls:
+    enabled: true
+    # Option A: cert-manager will write this Secret for you.
+    # Option B: create the Secret yourself:
+    #   kubectl create secret tls datarobot-tls \
+    #     --cert=./fullchain.pem --key=./privkey.pem -n datarobot
+    existingSecret: "datarobot-tls"
+
+# =============================================================================
+# Resource sizing -- PoC scale. Bump these for load tests.
+# =============================================================================
+resources:
+  modelingWorkers:
+    replicaCount: 2
+    requests:
+      cpu: "4"
+      memory: "32Gi"
+    limits:
+      cpu: "8"
+      memory: "64Gi"
+
+  appServer:
+    replicaCount: 1
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "1"
+      memory: "4Gi"
+
+# =============================================================================
+# Observability -- pipe to GCP Cloud Logging/Monitoring (already enabled on
+# the cluster). Toggle the chart's bundled Prometheus/Grafana off for PoC if
+# you don't need it.
+# =============================================================================
+monitoring:
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
