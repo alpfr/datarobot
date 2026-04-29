@@ -319,7 +319,7 @@ resource "google_container_node_pool" "workers" {
   node_config {
     machine_type = var.worker_machine_type
     disk_size_gb = var.worker_disk_size_gb
-    disk_type    = "pd-ssd"
+    disk_type    = var.worker_disk_type
     image_type   = "COS_CONTAINERD"
 
     # Spot VMs: ~60-91% cheaper than on-demand. May be preempted with 30s

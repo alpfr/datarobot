@@ -114,7 +114,13 @@ variable "worker_max_count" {
 variable "worker_disk_size_gb" {
   description = "Boot disk size for worker nodes."
   type        = number
-  default     = 200
+  default     = 100
+}
+
+variable "worker_disk_type" {
+  description = "Boot disk type for worker nodes. pd-balanced uses a separate, larger quota than pd-ssd and is fast enough for boot + container layers; pd-ssd PVCs (StorageClass datarobot-ssd) still serve hot data paths."
+  type        = string
+  default     = "pd-balanced"
 }
 
 variable "worker_use_spot" {

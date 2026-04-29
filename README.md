@@ -168,6 +168,43 @@ kubectl -n datarobot get ingress
 # https://<datarobot.example.com>
 ```
 
+## Troubleshooting
+
+### `Quota 'SSD_TOTAL_GB' exceeded` on `terraform apply`
+
+Default `SSD_TOTAL_GB` quota in a fresh GCP project is **500 GB per
+region** — easy to blow through once you add worker boot disks plus the
+chart's pd-ssd PVCs (Postgres, Mongo, ES, Redis ≈ 160 GB combined).
+
+This stack already mitigates by defaulting worker boot disks to
+`pd-balanced` (separate quota). If you still hit the limit, request a
+bump:
+
+```bash
+# Inspect current usage and limit
+gcloud compute regions describe "$REGION" \
+  --format="value(quotas)" | tr ',' '\n' | grep -i ssd
+
+# Request 2 TB (UI: IAM & Admin → Quotas → filter "SSD")
+# Or via gcloud:
+gcloud alpha services quota update \
+  --service=compute.googleapis.com \
+  --consumer="projects/$PROJECT_ID" \
+  --metric=compute.googleapis.com/ssd_total_storage \
+  --value=2048 \
+  --unit=1/{project}/{region} \
+  --dimensions=region=$REGION
+```
+
+Quota increases under 2 TB usually auto-approve in a few minutes. After
+approval, re-run `terraform apply`.
+
+### Spot capacity unavailable
+
+If the autoscaler can't get spot `n2-highmem-16` capacity in
+`us-central1-a`, either widen `node_locations` to all three zones or set
+`-var worker_use_spot=false`.
+
 ## Tear down (do this when the PoC is over!)
 
 > Cost discipline: this stack is sized for a short PoC with Spot workers in

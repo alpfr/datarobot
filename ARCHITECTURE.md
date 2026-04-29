@@ -153,7 +153,7 @@ Two distinct service accounts on purpose:
 |---|---|---|
 | Stateful K8s services (Postgres, Mongo, ES, Redis) | `pd-ssd` via the `datarobot-ssd` StorageClass (applied separately in `kubernetes/storage-class.yaml`) | Random-IO heavy; SSD avoids latency cliffs |
 | DataRobot blob storage | GCS regional buckets, accessed via Workload Identity | Object store is durable, cheap, and the chart supports it natively |
-| Node boot disks (workers) | `pd-ssd`, 200 GB | Faster cold start + container layer extraction |
+| Node boot disks (workers) | `pd-balanced`, 100 GB | Fast enough for boot/container layers; uses a separate (larger) quota than `pd-ssd`, leaving the SSD quota for actual hot-path PVCs |
 | Node boot disks (system) | `pd-standard`, 100 GB | System pool doesn't need SSD |
 
 Buckets have `force_destroy = true` for the PoC so `terraform destroy`
