@@ -118,9 +118,9 @@ variable "worker_disk_size_gb" {
 }
 
 variable "worker_disk_type" {
-  description = "Boot disk type for worker nodes. pd-balanced uses a separate, larger quota than pd-ssd and is fast enough for boot + container layers; pd-ssd PVCs (StorageClass datarobot-ssd) still serve hot data paths."
+  description = "Boot disk type for worker nodes. NOTE: pd-ssd, pd-balanced, AND pd-extreme all count against the same SSD_TOTAL_GB quota (default 500 GB/region in a fresh project). Only pd-standard is exempt. We default to pd-standard for boot disks to keep that quota free for hot-path PVCs (Postgres/Mongo/ES on the datarobot-ssd StorageClass)."
   type        = string
-  default     = "pd-balanced"
+  default     = "pd-standard"
 }
 
 variable "worker_use_spot" {

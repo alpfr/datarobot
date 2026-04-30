@@ -185,6 +185,19 @@ resource "google_container_cluster" "primary" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
+  # The default pool is created briefly during cluster bootstrap and then
+  # destroyed. Constrain its node_config so it doesn't blow our SSD quota
+  # in the few minutes before remove_default_node_pool kicks in. e2-small +
+  # pd-standard counts against neither SSD_TOTAL_GB nor expensive CPU SKUs.
+  node_config {
+    machine_type = "e2-small"
+    disk_size_gb = 20
+    disk_type    = "pd-standard"
+
+    service_account = google_service_account.gke_nodes.email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
   min_master_version = var.kubernetes_version
 
   release_channel {

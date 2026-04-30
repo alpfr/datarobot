@@ -286,12 +286,30 @@ kubectl -n datarobot get ingress
 ### `Quota 'SSD_TOTAL_GB' exceeded` on `terraform apply`
 
 Default `SSD_TOTAL_GB` quota in a fresh GCP project is **500 GB per
-region** — easy to blow through once you add worker boot disks plus the
-chart's pd-ssd PVCs (Postgres, Mongo, ES, Redis ≈ 160 GB combined).
+region**. **Important:** `pd-ssd`, `pd-balanced`, and `pd-extreme` all
+count against this same quota — only `pd-standard` is exempt. Don't
+assume "balanced" gives you a separate budget; it doesn't.
 
-This stack already mitigates by defaulting worker boot disks to
-`pd-balanced` (separate quota). If you still hit the limit, request a
-bump:
+This stack mitigates by:
+- defaulting worker boot disks to `pd-standard` (`var.worker_disk_type`),
+- constraining the temporary default pool that GKE creates during cluster
+  bootstrap to `e2-small` + 20 GB `pd-standard`,
+- reserving the SSD quota for the chart's hot-path PVCs (Postgres, Mongo,
+  ES, Redis ≈ 160 GB combined) on the `datarobot-ssd` StorageClass.
+
+**Check for orphaned disks first** — a previous failed apply often
+leaves SSD disks behind that still consume quota:
+
+```bash
+gcloud compute disks list --project="$PROJECT_ID" \
+  --filter="zone:us-central1 AND (type~pd-ssd OR type~pd-balanced)" \
+  --format="table(name,sizeGb,type.basename(),zone.basename(),users.basename())"
+
+# Delete unattached ones (the users column is empty):
+gcloud compute disks delete <DISK_NAME> --zone=us-central1-a --quiet
+```
+
+If you still need more headroom, request a quota bump:
 
 ```bash
 # Inspect current usage and limit
