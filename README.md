@@ -23,11 +23,115 @@ deploy DataRobot via its enterprise Helm chart.
 - `kubectl` ≥ 1.29 and the `gke-gcloud-auth-plugin`
   (`gcloud components install gke-gcloud-auth-plugin`)
 - `helm` ≥ 3.14
-- A GCP project with billing enabled, and an account that has
-  `roles/owner` (or an equivalent custom role) on it for the duration of
-  the PoC bootstrap.
+- A GCP project with billing enabled.
 - Credentials from your DataRobot SA: license key, private Helm repo URL +
   credentials, and image registry pull secret.
+
+---
+
+## IAM and service accounts
+
+Three identity layers are involved. Get them straight before running
+anything — most PoC failures are IAM, not code.
+
+### 0. Operator (the human running Terraform)
+
+The Google account you `gcloud auth application-default login` with
+needs to be able to enable APIs, create networks, GKE clusters,
+service accounts, IAM bindings, and GCS buckets. The simplest grant:
+
+```bash
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="user:you@example.com" --role="roles/owner"
+```
+
+If your org doesn't allow `roles/owner`, the minimum equivalent set is:
+
+| Role | Why |
+|---|---|
+| `roles/serviceusage.serviceUsageAdmin` | enable required APIs |
+| `roles/compute.networkAdmin` | VPC, subnet, router, NAT |
+| `roles/compute.securityAdmin` | firewall rules implicitly created by GKE |
+| `roles/container.admin` | create/manage GKE cluster + node pools |
+| `roles/iam.serviceAccountAdmin` | create the two service accounts below |
+| `roles/iam.serviceAccountUser` | let GKE attach the node SA to nodes |
+| `roles/resourcemanager.projectIamAdmin` | bind project-level roles to the node SA |
+| `roles/storage.admin` | create GCS buckets and bind IAM on them |
+
+You only need these for the bootstrap apply. Day-2 operators can run
+with much less.
+
+### 1. Service accounts created by Terraform
+
+| GCP Service Account | Purpose | Roles granted |
+|---|---|---|
+| `datarobot-poc-gke-nodes@<PROJECT_ID>.iam.gserviceaccount.com` | Identity attached to every GKE node VM. | `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/monitoring.viewer`, `roles/stackdriver.resourceMetadata.writer`, `roles/artifactregistry.reader` |
+| `datarobot-poc-app@<PROJECT_ID>.iam.gserviceaccount.com` | Workload-Identity target — DataRobot pods impersonate this SA. | `roles/storage.objectAdmin` scoped to the three PoC buckets only |
+
+Why two and not one: the node SA is shared by every workload on the
+node, so we keep its powers tiny (just enough for kubelet + image
+pulls). Anything DataRobot itself needs (GCS access) lives on the *app*
+SA, which only DataRobot's pods can mint tokens for.
+
+### 2. Workload Identity binding
+
+Terraform also creates the cross-domain binding that lets a Kubernetes
+ServiceAccount (KSA) impersonate the GCP SA:
+
+```
+GCP SA: datarobot-poc-app
+   └── roles/iam.workloadIdentityUser granted to:
+        serviceAccount:<PROJECT_ID>.svc.id.goog[datarobot/datarobot-app]
+```
+
+Read that as: "any pod in the `datarobot` namespace running under a KSA
+named `datarobot-app` may obtain credentials for `datarobot-poc-app`."
+Two requirements must hold for it to actually work at runtime:
+
+1. The Kubernetes SA must exist with that exact name + namespace.
+2. The KSA must be annotated with the GCP SA email.
+
+The Helm chart's `values-poc.yaml` already does both:
+
+```yaml
+global:
+  serviceAccount:
+    create: true
+    name: "datarobot-app"
+    annotations:
+      iam.gke.io/gcp-service-account: "datarobot-poc-app@<PROJECT_ID>.iam.gserviceaccount.com"
+```
+
+After `terraform apply`, paste the real email from
+`terraform output -raw datarobot_workload_service_account` into that
+annotation. **If you change the KSA name or namespace, also change
+`workload_identity_binding` in `terraform/main.tf` to match — they have
+to be identical strings.**
+
+### 3. Verify before installing the chart
+
+```bash
+# Did Terraform create both SAs?
+gcloud iam service-accounts list --filter="email ~ datarobot-poc" \
+  --project "$PROJECT_ID"
+
+# Are bucket-level roles on the app SA?
+for b in $(terraform -chdir=terraform output -json blob_buckets | jq -r '.[]'); do
+  echo "=== $b ==="
+  gcloud storage buckets get-iam-policy "gs://$b" \
+    --format="table(bindings.role,bindings.members)"
+done
+
+# Is the Workload Identity binding present?
+gcloud iam service-accounts get-iam-policy \
+  "$(terraform -chdir=terraform output -raw datarobot_workload_service_account)" \
+  --project "$PROJECT_ID"
+```
+
+You should see `roles/iam.workloadIdentityUser` granted to
+`serviceAccount:<PROJECT_ID>.svc.id.goog[datarobot/datarobot-app]`. If
+that line is missing the chart will install but DataRobot pods will
+fail GCS calls with `401 UNAUTHENTICATED`.
 
 ---
 
@@ -125,8 +229,17 @@ Open `kubernetes/values-poc.yaml` and replace every `<...>` placeholder:
 - `global.imageRegistry` — DataRobot private registry hostname
 - `global.serviceAccount.annotations` — paste the value of
   `terraform output -raw datarobot_workload_service_account`
+  (this is what wires Workload Identity; see *IAM and service accounts*
+  above)
 - `blobStorage.gcs.*Bucket` — paste from `terraform output blob_buckets`
 - `ingress.hostname` — your DNS name for the DataRobot UI
+
+> Quick check that the WI annotation is non-empty before you install —
+> a forgotten paste here is the most common cause of "pods come up but
+> can't read GCS":
+> ```bash
+> grep "iam.gke.io/gcp-service-account" kubernetes/values-poc.yaml
+> ```
 
 > The chart key paths in this template follow the public DataRobot Helm
 > conventions but **always cross-check** against the chart version your SA
