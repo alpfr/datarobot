@@ -146,7 +146,7 @@ gcloud auth application-default login
 
 # Pin your project + region
 export PROJECT_ID="<your-gcp-project-id>"
-export REGION="us-central1"
+export REGION="us-east1"
 gcloud config set project "$PROJECT_ID"
 gcloud config set compute/region "$REGION"
 ```
@@ -302,11 +302,11 @@ leaves SSD disks behind that still consume quota:
 
 ```bash
 gcloud compute disks list --project="$PROJECT_ID" \
-  --filter="zone:us-central1 AND (type~pd-ssd OR type~pd-balanced)" \
+  --filter="zone:us-east1 AND (type~pd-ssd OR type~pd-balanced)" \
   --format="table(name,sizeGb,type.basename(),zone.basename(),users.basename())"
 
 # Delete unattached ones (the users column is empty):
-gcloud compute disks delete <DISK_NAME> --zone=us-central1-a --quiet
+gcloud compute disks delete <DISK_NAME> --zone=us-east1-b --quiet
 ```
 
 If you still need more headroom, request a quota bump:
@@ -333,7 +333,7 @@ approval, re-run `terraform apply`.
 ### Spot capacity unavailable
 
 If the autoscaler can't get spot `n2-highmem-16` capacity in
-`us-central1-a`, either widen `node_locations` to all three zones or set
+`us-east1-b`, either widen `node_locations` to all three zones or set
 `-var worker_use_spot=false`.
 
 ## Tear down (do this when the PoC is over!)

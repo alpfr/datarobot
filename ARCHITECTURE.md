@@ -20,7 +20,7 @@ flowchart TB
 
     subgraph NET["VPC: datarobot-poc-vpc"]
       direction TB
-      SUB["Subnet: datarobot-poc-subnet<br/>10.20.0.0/20<br/>(us-central1)<br/>Private Google Access ✓"]
+      SUB["Subnet: datarobot-poc-subnet<br/>10.20.0.0/20<br/>(us-east1)<br/>Private Google Access ✓"]
       P["Secondary range: pods<br/>10.40.0.0/14"]
       S["Secondary range: services<br/>10.24.0.0/20"]
       RT["Cloud Router"]
@@ -132,7 +132,7 @@ Two distinct service accounts on purpose:
 
 - **Regional cluster, single-zone nodes.** `google_container_cluster.primary`
   is regional (control plane replicated across 3 zones for resilience),
-  but `node_locations = ["us-central1-a"]` keeps the actual VMs in one
+  but `node_locations = ["us-east1-b"]` keeps the actual VMs in one
   zone to cut PoC cost by 3×.
 - **Two pools, separated by taint.**
   - `system` — untainted, default landing pad for ingress, cert-manager,

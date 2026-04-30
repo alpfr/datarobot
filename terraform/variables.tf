@@ -4,21 +4,21 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "GCP region for regional resources (VPC subnet, GKE control plane, GCS multi-region pinned bucket location)."
+  description = "GCP region for regional resources (VPC subnet, GKE control plane, GCS multi-region pinned bucket location). Defaulting to us-east1 -- a fresh-quota region away from any other workloads in this project."
   type        = string
-  default     = "us-central1"
+  default     = "us-east1"
 }
 
 variable "zones" {
   description = "Zones used by the regional GKE cluster node pools. Note: a regional GKE cluster always replicates the control plane across 3 zones; this variable is informational for documentation only."
   type        = list(string)
-  default     = ["us-central1-a", "us-central1-b", "us-central1-c"]
+  default     = ["us-east1-b", "us-east1-c", "us-east1-d"]
 }
 
 variable "node_locations" {
   description = "Zones the node pools actually run in. For a few-day PoC, pin to a single zone to cut node count by 3x."
   type        = list(string)
-  default     = ["us-central1-a"]
+  default     = ["us-east1-b"]
 }
 
 variable "name_prefix" {
