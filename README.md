@@ -342,6 +342,10 @@ If the autoscaler can't get spot `n2-highmem-16` capacity in
 > a single zone. Even so, leaving it running for a week costs real money.
 > Run `terraform destroy` as soon as you're done.
 
+Full teardown procedure — including the order-of-operations to avoid
+Terraform hanging on stranded LB rules, and the orphan-hunt commands —
+is in [CLEANUP.md](CLEANUP.md).
+
 
 ```bash
 helm -n datarobot uninstall datarobot
